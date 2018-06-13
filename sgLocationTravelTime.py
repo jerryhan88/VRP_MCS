@@ -1,8 +1,6 @@
 import os.path as opath
-import pandas as pd
 import csv, pickle
 from collections import namedtuple
-from shapely.geometry import Polygon, Point
 import googlemaps
 #
 from __path_organizer import ef_dpath, pf_dpath
