@@ -1,39 +1,45 @@
 import os.path as opath
 import csv, pickle
-from collections import namedtuple
-import googlemaps
 #
 from __path_organizer import ef_dpath, pf_dpath
 
-
-new_header = ['Lat0', 'Lng0',
-              'Lat1', 'Lng1',
-              'Duration',
-              'Location0', 'District0',
-              'Location1', 'District1']
-pdLoc = namedtuple('loctt', new_header)
-
-
+DEPOT, DEPOT_LAT, DEPOT_LNG = 'Keppel Logistics', 1.371509, 103.909272
 SEC60 = 60
 
-def get_loctt():    
-    def get_locations_locPairs():
-        csv_fpath = opath.join(ef_dpath, 'LocationPD.csv')
-        locations = []
-        with open(csv_fpath) as r_csvfile:
-            reader = csv.DictReader(r_csvfile)
-            for row in reader:
-                Lat, Lng = [eval(row[cn]) for cn in ['Lat', 'Lng']]
-                Location, District = [row[cn] for cn in ['Location', 'District']]
-                locations.append([Lat, Lng, Location, District])
-        locPairs = set()                
-        for _, _, loc0, _ in locations:
-            for _, _, loc1, _ in locations:
-                if loc0 == loc1:
-                    continue
-                locPairs.add((loc0, loc1))
-        return locations, locPairs
+
+def get_loctt():
+    csv_fpath = opath.join(pf_dpath, 'LocationTravelTime.csv')
+    pkl_fpath = opath.join(pf_dpath, 'LocationTravelTime.pkl')
+    if opath.exists(pkl_fpath):
+        with open(pkl_fpath, 'rb') as fp:
+            loctt = pickle.load(fp)
+        return loctt
     #
+    locations, wholeLocPairs = get_locations_locPairs()
+    handled_locPairs = set()
+    with open(csv_fpath) as r_csvfile:
+        reader = csv.DictReader(r_csvfile)
+        for row in reader:
+            Location0, Location1 = [row[cn] for cn in ['Location0', 'Location1']]
+            handled_locPairs.add((Location0, Location1))
+    target_locPairs = wholeLocPairs.difference(handled_locPairs)
+    if len(target_locPairs) != 0:
+        get_loctt_googleMap()
+    loctt = {}
+    with open(csv_fpath) as r_csvfile:
+        reader = csv.DictReader(r_csvfile)
+        for row in reader:
+            Location0, Location1 = [row[cn] for cn in ['Location0', 'Location1']]
+            Duration = eval(row['Duration'])
+            loctt[Location0, Location1] = Duration
+    with open(pkl_fpath, 'wb') as fp:
+        pickle.dump(loctt, fp)
+    #
+    return loctt
+
+
+def get_loctt_googleMap():
+    import googlemaps
     googleKeys = [
         'AIzaSyAQYLeLHyJvNVC7uIbHmnvf7x9XC6murmk',
         'AIzaSyDCiqj9QQ-lXWGmzxXM0j-Gbeo_BRlsd0g',
@@ -55,11 +61,15 @@ def get_loctt():
             googleKey = googleKeys[numTrial % len(googleKeys)]
             gmaps = googlemaps.Client(key=googleKey)
             #
-
             csv_ofpath = opath.join(pf_dpath, 'LocationTravelTime.csv')
             if not opath.exists(csv_ofpath):
                 with open(csv_ofpath, 'w') as w_csvfile:
                     writer = csv.writer(w_csvfile, lineterminator='\n')
+                    new_header = ['Lat0', 'Lng0',
+                                  'Lat1', 'Lng1',
+                                  'Duration',
+                                  'Location0', 'District0',
+                                  'Location1', 'District1']
                     writer.writerow(new_header)
                 target_locPairs = wholeLocPairs
             else:
@@ -101,8 +111,25 @@ def get_loctt():
         break
 
 
+def get_locations_locPairs():
+    csv_fpath = opath.join(ef_dpath, 'LocationPD.csv')
+    locations = []
+    with open(csv_fpath) as r_csvfile:
+        reader = csv.DictReader(r_csvfile)
+        for row in reader:
+            Lat, Lng = [eval(row[cn]) for cn in ['Lat', 'Lng']]
+            Location, District = [row[cn] for cn in ['Location', 'District']]
+            locations.append([Lat, Lng, Location, District])
+    locations.append([DEPOT_LAT, DEPOT_LNG, DEPOT, None])
+    locPairs = set()
+    for _, _, loc0, _ in locations:
+        for _, _, loc1, _ in locations:
+            if loc0 == loc1:
+                continue
+            locPairs.add((loc0, loc1))
+    return locations, locPairs
 
 
 
 if __name__ == '__main__':
-    print(get_loctt())
+    print(len(get_loctt()))
