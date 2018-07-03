@@ -7,86 +7,15 @@ import numpy as np
 from gurobipy import *
 #
 from _util_cython import gen_cFile
-
+#
+gen_cFile('CWL4')
+from CWL4 import write_log, itr2file, res2file
+from CWL4 import generate_RMP
+from CWL4 import NUM_CORES, EPSILON
 prefix = 'PD_IH'
 gen_cFile(prefix)
 from PD_IH import run as PD_IH_run
 from PD_IH import calc_travelTime
-
-
-NUM_CORES = multiprocessing.cpu_count()
-EPSILON = 0.00001
-
-
-def write_log(fpath, contents):
-    with open(fpath, 'a') as f:
-        logContents = '\n\n'
-        logContents += '======================================================================================\n'
-        logContents += '%s\n' % str(datetime.datetime.now())
-        logContents += '%s\n' % contents
-        logContents += '======================================================================================\n'
-        f.write(logContents)
-
-
-def itr2file(fpath, contents=[]):
-    if not contents:
-        if opath.exists(fpath):
-            os.remove(fpath)
-        with open(fpath, 'wt') as w_csvfile:
-            writer = csv.writer(w_csvfile, lineterminator='\n')
-            header = ['itrNum',
-                      'eliCpuTime', 'eliWallTime',
-                      'numCols', 'numTB',
-                      'relObjV', 'selBC', 'selBC_RC', 'new_RC_BC']
-            writer.writerow(header)
-    else:
-        with open(fpath, 'a') as w_csvfile:
-            writer = csv.writer(w_csvfile, lineterminator='\n')
-            writer.writerow(contents)
-
-
-def res2file(fpath, objV, gap, eliCpuTime, eliWallTime):
-    with open(fpath, 'wt') as w_csvfile:
-        writer = csv.writer(w_csvfile, lineterminator='\n')
-        header = ['objV', 'Gap', 'eliCpuTime', 'eliWallTime']
-        writer.writerow(header)
-        writer.writerow([objV, gap, eliCpuTime, eliWallTime])
-
-
-def generate_RMP(prmt, add_inputs):
-    C, p_c, e_ci = list(map(add_inputs.get, ['C', 'p_c', 'e_ci']))
-    #
-    V, T, cC = list(map(prmt.get, ['V', 'T', 'cC']))
-    nV = len(V)
-    #
-    # Define decision variables
-    #
-    RMP = Model('RMP')
-    q_c = {}
-    for c in range(len(C)):
-        q_c[c] = RMP.addVar(vtype=GRB.BINARY, name="q[%d]" % c)
-    RMP.update()
-    #
-    # Define objective
-    #
-    obj = LinExpr()
-    for c in range(len(C)):
-        obj += p_c[c] * q_c[c]
-    # for c in range(len(C)):
-    #     obj -= cC * q_c[c]
-    RMP.setObjective(obj, GRB.MAXIMIZE)
-    #
-    # Define constrains
-    #
-    taskAC = {}
-    for i in T:  # eq:taskA
-        taskAC[i] = RMP.addConstr(quicksum(e_ci[c][i] * q_c[c] for c in range(len(C))) <= 1,
-                                  name="taskAC[%d]" % i)
-    numVC = RMP.addConstr(quicksum(q_c[c] for c in range(len(C))) <= nV,
-                              name="numVC")
-    RMP.update()
-    #
-    return RMP, q_c, taskAC, numVC
 
 
 def LS_run(prmt, cwl_inputs):
@@ -114,7 +43,7 @@ def LS_run(prmt, cwl_inputs):
             vec = [0 for _ in range(len(T))]
             for i in Ts1:
                 vec[i] = 1
-            rc = cP * len(Ts1) -cC - (np.array(vec) * np.array(pi_i)).sum() - mu
+            rc = cP * len(Ts1) - (np.array(vec) * np.array(pi_i)).sum() - mu
             tt_rc_Ts1_seq.append([travelTime, -rc, Ts1, seq1])
     #
     if tt_rc_Ts1_seq:
@@ -143,8 +72,6 @@ def run(prmt, etc=None):
     TB = set()
     s_c = {}
     #
-    nV = len(V)
-    # initCols = [[] for _ in range(nV)]
     for i in T:
         c = len(C)
         iP, iM = 'p%d' % i, 'd%d' % i
@@ -153,32 +80,11 @@ def run(prmt, etc=None):
         C.append(Ts)
         sC.add(frozenset(tuple(Ts)))
         #
-        p_c.append(cP - cC)
-        # p_c.append(cP)
+        p_c.append(cP)
         #
         vec = [0 for _ in range(len(T))]
         vec[i] = 1
         e_ci.append(vec)
-        #
-        # initCols[i % nV].append(i)
-    # for Ts in initCols:
-    #     if len(Ts) < 2:
-    #         continue
-    #     c = len(C)
-    #     seq0, travelTime0 = [n0, n0], None
-    #     vec = [0 for _ in range(len(T))]
-    #     for i0 in Ts:
-    #         travelTime1, seq1 = PD_IH_run(prmt, {'seq0': seq0, 'i0': i0})
-    #         seq0, travelTime0 = seq1, travelTime1
-    #         vec[i0] = 1
-    #     s_c[c] = seq0
-    #     C.append(Ts)
-    #     sC.add(frozenset(tuple(Ts)))
-    #     if travelTime0 <= _delta:
-    #         p_c.append(cP * len(Ts) - cC)
-    #     else:
-    #         p_c.append(-cC)
-    #     e_ci.append(vec)
     #
     cwl_inputs['C'] = C
     cwl_inputs['sC'] = sC
@@ -217,9 +123,9 @@ def run(prmt, etc=None):
         for rc, c in [(LRMP.getVarByName("q[%d]" % c).RC, c) for c in range(len(C))]:
             if c in TB:
                 continue
-            if rc < -cC:
-                TB.add(c)
-                continue
+            # if rc < -EPSILON:
+            #     TB.add(c)
+            #     continue
             if rc < minRC:
                 minRC = rc
                 c0 = c
@@ -236,12 +142,8 @@ def run(prmt, etc=None):
         itr2file(etc['itrFileCSV'], [counter, '%.2f' % eliCpuTimeP, '%.2f' % eliWallTimeP,
                                      len(cwl_inputs['C']), len(cwl_inputs['TB']),
                                      '%.2f' % LRMP.objVal, C[c0], '%.2f' % minRC, str(rc_Ts1)])
-        # if len(rc_Ts1_seq) == 0:
-        #     TB.add(c0)
-        # else:
-        #     # is_updated = False
         for rc, Ts1, seq in rc_Ts1_seq:
-            if rc < -cC:
+            if rc < -EPSILON:
                 continue
             is_updated = True
             vec = [0 for _ in range(len(T))]

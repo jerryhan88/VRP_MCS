@@ -8,7 +8,7 @@ from sgLocationTravelTime import DEPOT
 MAX_NUM_VEH = 50
 ALLOWABLE_TT = 5 * 60  # min.
 TASK_REWARD = 12  # S$
-VEH_COST = 100  # S$
+VEH_COST = 200  # S$
 
 
 def mrtS1():
@@ -21,7 +21,7 @@ def mrtS1():
     return prmt
 
 
-def convert_prob2prmt(problemName, task_ppdp):
+def convert_prob2prmt(problemName, task_ppdp, numVeh=None):
     lid_loc, loc_lid = {}, {}
     lid_loc[0] = DEPOT
     loc_lid[DEPOT] = 0
@@ -70,7 +70,7 @@ def convert_prob2prmt(problemName, task_ppdp):
         t_ij[i, n0] = travel_time[_N[i]][0]
         for j in _N:
             t_ij[i, j] = travel_time[_N[i]][_N[j]]
-    V = list(range(MAX_NUM_VEH))
+    V = list(range(numVeh if numVeh else MAX_NUM_VEH))
     _delta = ALLOWABLE_TT
     cP, cC = TASK_REWARD, VEH_COST
     #

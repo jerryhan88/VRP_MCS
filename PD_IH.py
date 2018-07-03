@@ -5,16 +5,21 @@ def run(prmt, pd_inputs):
     seq0, i0 = list(map(pd_inputs.get, ['seq0', 'i0']))
     #
     iP, iM = 'p%d' % i0, 'd%d' % i0
-    travelTime, seq1 = 1e400, None
     assert len(seq0) >= 2
-    for i in range(1, len(seq0) - 1):
-        for j in range(i, len(seq0) - 1):
-            seq = seq0[:]
-            seq.insert(i, iP)
-            seq.insert(j + 1, iM)
-            detourTime = calc_travelTime(seq, t_ij)
-            if detourTime < travelTime:
-                travelTime, seq1 = detourTime, seq
+    if len(seq0) == 2:
+        n0 = prmt['n0']
+        seq1 = [n0, iP, iM, n0]
+        travelTime = calc_travelTime(seq1, t_ij)
+    else:
+        travelTime, seq1 = 1e400, None
+        for i in range(1, len(seq0) - 1):
+            for j in range(i, len(seq0) - 1):
+                seq = seq0[:]
+                seq.insert(i, iP)
+                seq.insert(j + 1, iM)
+                detourTime = calc_travelTime(seq, t_ij)
+                if detourTime < travelTime:
+                    travelTime, seq1 = detourTime, seq
     return travelTime, seq1
 
 
